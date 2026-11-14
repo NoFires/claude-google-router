@@ -1,0 +1,26 @@
+{
+  "name": "claude-google-router",
+  "version": "0.1.0",
+  "description": "Standalone Anthropic (/v1/messages) routing gateway that connects Claude Code to Google Vertex AI (Express API Key / Service Account) and Gemini API.",
+  "type": "module",
+  "bin": {
+    "claude-google-router": "./lib/cli.js",
+    "cgr": "./lib/cli.js"
+  },
+  "scripts": {
+    "start": "node ./lib/cli.js start",
+    "test": "node --test ./test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "claude-code",
+    "anthropic",
+    "google-vertex",
+    "gemini",
+    "router",
+    "gateway"
+  ],
+  "license": "MIT"
+}

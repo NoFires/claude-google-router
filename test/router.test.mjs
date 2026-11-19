@@ -704,13 +704,25 @@ test('surgical settings.json management preserves hooks/plugins/custom env, inje
     assert.ok(afterProfile.hooks?.SessionEnd)
     assert.equal(afterProfile.modelPicker, undefined)
 
-    // Re-apply and test exitRestore mode: backup
+    // Re-apply and test exitRestore mode: backup. The backup is refreshed on every takeover
+    // from a non-router state, so it restores the settings in place right before this takeover
+    // (deepseek), not the stale snapshot from the first takeover (bigmodel).
     await applyClaudeSettings({ baseUrl: 'http://127.0.0.1:18765', config: cfg }, settingsPath)
     await executeExitRestore({ ...cfg, exitRestore: { mode: 'backup', profileId: '' } }, 'http://127.0.0.1:18765', settingsPath)
     const afterBackup = JSON.parse(readFileSync(settingsPath, 'utf8'))
-    assert.equal(afterBackup.env.ANTHROPIC_BASE_URL, 'https://open.bigmodel.cn/api/anthropic')
-    assert.equal(afterBackup.model, 'fable')
+    assert.equal(afterBackup.env.ANTHROPIC_BASE_URL, 'https://api.deepseek.com/anthropic')
+    assert.equal(afterBackup.env.ANTHROPIC_AUTH_TOKEN, 'ds-secret')
     assert.ok(afterBackup.hooks?.SessionEnd)
+
+    // A different local proxy (other port) is a foreign provider: it must be captured & restorable
+    writeFileSync(settingsPath, JSON.stringify({
+      env: { ANTHROPIC_BASE_URL: 'http://127.0.0.1:3456', ANTHROPIC_AUTH_TOKEN: 'other-proxy-token' },
+    }, null, 2))
+    const appliedOverProxy = await applyClaudeSettings({ baseUrl: 'http://127.0.0.1:18765', config: cfg }, settingsPath)
+    assert.equal(appliedOverProxy.capturedProfile?.providerEnv?.ANTHROPIC_BASE_URL, 'http://127.0.0.1:3456')
+    assert.equal((await inspectClaudeSettings('http://127.0.0.1:3456', settingsPath)).isRoutedToPlugin, false)
+    await executeExitRestore({ ...cfg, exitRestore: { mode: 'backup', profileId: '' } }, 'http://127.0.0.1:18765', settingsPath)
+    assert.equal(JSON.parse(readFileSync(settingsPath, 'utf8')).env.ANTHROPIC_BASE_URL, 'http://127.0.0.1:3456')
 
     // Direct profile switch works standalone too
     await applyDirectProfileToClaudeSettings(cfg.claudeProfiles.deepseek, settingsPath, 'http://127.0.0.1:18765')
@@ -1255,5 +1267,98 @@ test('isClaudeRecapRequest and routes.recapTarget optionally reroute away_summar
     assert.equal(r3.content[0].text, 'Main model reply')
   } finally {
     await router.stop()
+  }
+})
+
+test('admin API rejects DNS-rebinding Hosts, cross-origin and non-JSON requests; secrets are redacted', async () => {
+  const { request } = await import('node:http')
+  let activeConfig = normalizeConfig({
+    localAuthToken: 'local-secret-token',
+    providers: {
+      bigmodel: {
+        type: 'anthropic',
+        enabled: true,
+        baseUrl: 'https://open.bigmodel.cn/api/anthropic',
+        apiKey: 'glm-key',
+        headers: { 'x-api-key': 'header-secret', 'x-client': 'cgr' },
+        models: ['glm-5.3[1M]'],
+      },
+    },
+  })
+  const router = new ClaudeGoogleRouterServer({
+    getConfig: () => activeConfig,
+    updateConfig: async patch => {
+      activeConfig = normalizeConfig({ ...activeConfig, ...patch })
+      return activeConfig
+    },
+  })
+  const st = await router.start('127.0.0.1', 0)
+  const port = new URL(st.baseUrl).port
+  const send = (path, { method = 'GET', headers = {}, body } = {}) => new Promise((resolve, reject) => {
+    const req = request({ host: '127.0.0.1', port, path, method, headers }, res => {
+      let data = ''
+      res.on('data', c => { data += c })
+      res.on('end', () => resolve({ status: res.statusCode, body: data }))
+    })
+    req.on('error', reject)
+    if (body) req.write(body)
+    req.end()
+  })
+  try {
+    const upsertBody = JSON.stringify({ id: 'bigmodel', provider: { baseUrl: 'https://evil.example' } })
+
+    // DNS rebinding: foreign Host header
+    assert.equal((await send('/api/status', { headers: { host: `evil.example:${port}` } })).status, 403)
+    assert.equal((await send('/', { headers: { host: `evil.example:${port}` } })).status, 403)
+
+    // CSRF: cross-origin simple request (text/plain) and cross-origin JSON
+    assert.equal((await send('/api/providers/upsert', {
+      method: 'POST',
+      headers: { origin: 'https://evil.example', 'content-type': 'text/plain' },
+      body: upsertBody,
+    })).status, 403)
+    assert.equal((await send('/api/providers/upsert', {
+      method: 'POST',
+      headers: { origin: 'null', 'content-type': 'application/json' },
+      body: upsertBody,
+    })).status, 403)
+    // Same-origin but non-JSON content type
+    assert.equal((await send('/api/providers/upsert', {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain' },
+      body: upsertBody,
+    })).status, 415)
+    assert.equal(activeConfig.providers.bigmodel.baseUrl, 'https://open.bigmodel.cn/api/anthropic')
+
+    // Same-origin dashboard request is allowed; secrets are not leaked
+    const status = await send('/api/status', { headers: { origin: `http://127.0.0.1:${port}` } })
+    assert.equal(status.status, 200)
+    assert.ok(!status.body.includes('local-secret-token'))
+    assert.ok(!status.body.includes('header-secret'))
+    assert.ok(!status.body.includes('glm-key'))
+    const redacted = JSON.parse(status.body).config.providers.bigmodel.headers
+    assert.equal(redacted['x-client'], 'cgr')
+
+    // Dashboard round-trips masked headers: stored secret must be preserved
+    const saved = await send('/api/providers/upsert', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'bigmodel', provider: { headers: redacted } }),
+    })
+    assert.equal(saved.status, 200)
+    assert.equal(activeConfig.providers.bigmodel.headers['x-api-key'], 'header-secret')
+  } finally {
+    await router.stop()
+  }
+})
+
+test('missing stream flag means non-streaming; "express" project uses project-less Express endpoint', () => {
+  assert.equal(buildOpenAiRequestFromAnthropic({ model: 'm', messages: [{ role: 'user', content: 'hi' }] }, 'm').stream, false)
+  assert.equal(buildOpenAiRequestFromAnthropic({ model: 'm', stream: true, messages: [{ role: 'user', content: 'hi' }] }, 'm').stream, true)
+  for (const project of ['', 'express', 'EXPRESS']) {
+    assert.equal(
+      buildGeminiEndpoint({ authMode: 'express-api-key', project, location: 'global' }, 'gemini-4-hydrogen', 'generateContent'),
+      'https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-4-hydrogen:generateContent',
+    )
   }
 })

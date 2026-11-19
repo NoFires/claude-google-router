@@ -28,6 +28,30 @@ Route Claude Code to **Google Vertex AI / Gemini** (`gemini-4-hydrogen`, `gemini
 - **Web Dashboard (`http://127.0.0.1:18765/`)**:
   - Unified model pool with per-model display checkboxes (`Show in /model`), one-click `Set Default` & `Test`, direct external profile switcher, persistent exit-restore selector, provider/route editors, and live request monitor.
 
+## Web Console (primary UI)
+
+Double-click **`cgr.cmd`** (or run `cgr` with no arguments). It starts the gateway in the background if needed and opens the web console at `http://127.0.0.1:18765/`. Everything can be done in the web console:
+
+- **⚡ Quick setup:**
+  - enter the relay address (bare IPv6 is fine);
+  - **detect local proxies** (it scans 7897 / 7890 / 10808 and similar ports and tests whether each one reaches the relay);
+  - fetch the relay's model list and pick the default model;
+  - optionally take over Claude Code;
+  - **Save & check** then runs the link probe, the CPAMC quota and the conflict check in one go.
+- **Models and providers:** which models show up in `/model`, slot mapping, presets, providers and multi-account pools. Relay fields: forced proxies, backup nodes, failover mode, Management Key. Quota mode and usage scripts are set per provider.
+- **Relay links:** live active link, manual switching, probe.
+- **Quota:** CPAMC credentials (with an account filter), balances and coding plans, usage scripts, local subscriptions (opt-in), Copilot login.
+- **Conflicts:**
+  - automatic alert at the top of the page;
+  - per conflict: "Delete old config" or "Don't remind again";
+  - "Fix all", backup list and per-run undo, "reset ignored".
+- **Token usage:**
+  - range, grouping and filters (model, inbound format, client, errors), sorting, top N;
+  - pricing rules, CSV export, prune and clear.
+- **Other:** exit-restore policy, direct profile switch, request logs, config reload, **▶ Launch Claude Code** (opens a terminal in a chosen folder, running through the gateway).
+
+The CLI below still works for scripting, but the web console is the main interface.
+
 ## Quick Start
 
 ```powershell

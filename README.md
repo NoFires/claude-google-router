@@ -152,6 +152,37 @@ cgr quota import-local        # opt-in: also show this machine's subscriptions (
 - CC Switch (`~/.cc-switch`, proxy `:15721`) and claude-code-router, which also rewrite `settings.json`;
 - a different program occupying the gateway port.
 
+Each conflict that can be fixed automatically comes with an action. When you run `cgr doctor` in a terminal, and also before `start`, `start --daemon`, `apply` and `run` take over Claude settings, cgr asks about each conflict:
+
+`[d] delete old config  [s] skip  [n] skip and don't ask again  [a] skip all the rest`
+
+- **Actions:**
+  - delete Windows user or system environment variables;
+  - remove conflicting keys from project `settings*.json` (`env.ANTHROPIC_*`, `apiKeyHelper`, Bedrock/Vertex switches);
+  - append localhost to `NO_PROXY`;
+  - move leftover data of other tools (e.g. `~/.cc-switch`) into the backup directory.
+- **Backup and undo:** every action is backed up first, under `~/.claude-google-router/conflict-backups/<time>/`.
+  - `cgr doctor undo` restores the last run; `cgr doctor backups` lists all runs.
+  - `cgr doctor reset-ignored` brings back conflicts you chose not to be reminded about.
+- **Non-interactive use:** `--fix-conflicts` deletes everything, `--skip-conflicts` only shows warnings. Non-interactive environments, such as the daemon child process, never modify anything.
+- **`cgr run`** always strips `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN` and similar variables from the Claude process it launches.
+- **Dashboard:** "Delete old config", "Don't remind again" and "Undo last" buttons.
+
+## Token Usage Statistics
+
+Every gateway request is recorded under `~/.claude-google-router/usage/usage-YYYY-MM.jsonl`. Only metadata is stored, no conversation content: provider, account, requested and upstream model, inbound format, client, stream flag, status, duration, and input / output / cache-read / cache-write tokens.
+
+```powershell
+cgr usage                                     # today / 7d / 30d / all, by provider, top models, daily bars
+cgr usage --by provider,model --since 7d      # any of: provider account model upstreamModel format client hour day week month
+cgr usage --by day --since month --provider relay --model "claude-*" --errors
+cgr usage price set "claude-sonnet-*" --input 3 --output 15 --cache-read 0.3 --cache-write 3.75   # $/1M tokens -> cost column
+cgr usage export --since 30d --file usage.csv
+cgr usage prune --before 2026-01-01
+```
+
+The dashboard has a usage card with range, grouping and provider filter. APIs: `GET /api/usage/summary`, `POST /api/usage/query`.
+
 ## Multi-Format Inbound (Codex, Gemini CLI, OpenAI SDKs)
 
 Besides Anthropic `/v1/messages`, the gateway accepts:
@@ -181,6 +212,7 @@ Parts of the quota checks and the Responses mapping are ported from [cc-switch](
 - `lib/cli.js` / `lib/cli-commands.js` / `lib/daemon.js` / `lib/manager-tui.js`: CLI entry, subcommands, background daemon lifecycle, and interactive terminal manager.
 - `lib/proxy-tunnel.js` / `lib/relay.js` / `lib/relay-cli.js` / `lib/config-watch.js`: fail-closed HTTP CONNECT / SOCKS5 tunnels, relay failover and probes, relay CLI, config hot reload.
 - `lib/quota/*` / `lib/quota-cli.js`: quota sources (CPAMC, API-key balances, coding plans, usage scripts, local subscriptions, gateway stats).
-- `lib/claude-doctor.js`: read-only Claude configuration conflict check.
+- `lib/claude-doctor.js` / `lib/doctor-actions.js`: Claude configuration conflict check, interactive resolution with backups and undo.
+- `lib/usage-store.js` / `lib/usage-cli.js`: persistent token usage log and statistics.
 - `lib/inbound/*`: OpenAI Chat, OpenAI Responses and Gemini inbound translators.
 

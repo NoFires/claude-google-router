@@ -19,7 +19,7 @@ Route Claude Code to **Google Vertex AI / Gemini** (`gemini-4-hydrogen`, `gemini
   - `cgr run [--model <provider/model>] [-- <claude-args>...]`: launch Claude Code in an isolated temporary `--settings` file.
 - **Surgical `~/.claude/settings.json` Management**:
   - Only manages provider-related `env` keys (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_*_MODEL`, `ANTHROPIC_CUSTOM_HEADERS`, `CLAUDE_CODE_SUBAGENT_MODEL`), `model`, and `modelPicker`.
-  - Never overwrites `hooks`, `enabledPlugins`, `permissions`, or custom `env` variables.
+  - Never overwrites `hooks`, `enabledPlugins`, `permissions`, or unrelated custom `env` variables (provider-related keys such as `API_TIMEOUT_MS` / `ANTHROPIC_SMALL_FAST_MODEL` are managed and restored on exit).
   - Injects `modelPicker.options` (`behavesAs`, `replaceBuiltInOptions: true` by default) and serves `GET /v1/models` with your selected models.
 - **Model Modality & Polymorphism Distinction**:
   - Models can be strings (`"gemini-4-hydrogen[1m]"`) or polymorphic objects (`{ id, visible, modalities, thinking, tools, contextWindow, behavesAs }`).
@@ -104,6 +104,70 @@ cgr status
 
 > **Privacy Note:** All API keys, service account paths, and imported Claude profiles are stored locally in `~/.claude-google-router/config.json`, never inside this repository.
 
+## Relay Links: Forced Proxy (Fail-Closed), Backup Nodes, Hot Reload
+
+For relays that must not be reached directly (e.g. an IPv6-only CLIProxyAPI / CPAMC relay that blocks mainland IPv6), give the provider `proxies`. Every request for that provider (messages, count_tokens, probes, quota, SA token minting) then goes **only** through an HTTP CONNECT or SOCKS5 tunnel. If no proxy works, the request fails with `[Proxy Error] 上游代理不可用，已阻止直连`; it never falls back to DIRECT.
+
+```powershell
+# Anthropic-format relay on a bare IPv6 address, through Clash/mihomo (mixed port 7897)
+cgr relay set relay --base-url "http://[2001:db8:4040:128d::]:8317" --proxy socks5://127.0.0.1:7897 --api-key <relay-key> --models claude-sonnet-4-6
+# Backup proxy and backup node; auto failover on connect errors/timeouts (or --failover manual)
+cgr relay set relay --proxy socks5://127.0.0.1:7897,http://127.0.0.1:7898 --fallback "http://[2600:...:2]:8317"
+cgr relay switch relay --proxy 1 --node 0      # pin a link
+cgr relay status                                # configured + live active link
+cgr probe relay                                 # proxy connect -> tunnel -> GET /v1/models, with diagnosis
+```
+
+- Formats: `--type anthropic` (default), `openai`, or `google` (Gemini-native `/v1beta/models/*:generateContent` with `x-goog-api-key`).
+- IPv6 literals are bracketed in the CONNECT line and Host header, and sent as SOCKS5 ATYP 0x04.
+- SSE is passed through chunk by chunk (`x-accel-buffering: no`). `requestTimeoutMs` is an **idle** timeout, so long streams are not cut.
+- A running gateway **hot-reloads** `config.json` (about 1 second). Changing the relay IP, port or proxy needs no restart of cgr or Claude Code.
+
+## Quota (On Demand)
+
+```powershell
+cgr quota                     # everything that is configured
+cgr quota relay --status-only # CPAMC: server-side credential status only, no upstream calls
+cgr quota import-local        # opt-in: also show this machine's subscriptions (hidden by default)
+```
+
+- **CPAMC / CLIProxyAPI**: set `--management-key` on the relay provider. Lists `/v8/management/credentials` (falls back to `/v0/management/auth-files`). Live quota per credential (Claude, Codex, Antigravity, Gemini CLI, Kimi) is fetched through the management `api-call` endpoint, the same way the management center does it. Any 401/403 stops immediately, because 5 failures ban the IP for 30 minutes.
+- **API-key balances / coding plans** (ported from cc-switch), auto-detected from the base URL:
+  - balances: DeepSeek, StepFun, SiliconFlow, OpenRouter, Novita, Zhipu;
+  - coding plans: Kimi, Zhipu personal/team, MiniMax, ZenMux, OpenCode Go, Command Code.
+- **Usage scripts**: `cgr quota script <id> --preset newapi|sub2api|general|custom [--file x.js]`. Scripts run in `node:vm`, which isolates them but is not a security boundary.
+- **Local subscriptions** (opt-in only): Claude Code, Codex, Gemini CLI, Kimi Code, Antigravity (`agy` CLI) and Copilot (`cgr quota login copilot`).
+- **Gateway statistics**: per-target request and token counters plus the latest `anthropic-ratelimit-*` headers.
+- The dashboard has the same panels. Nothing is polled automatically.
+
+## Claude Config Conflict Check
+
+`cgr doctor` (also run automatically on `start` / `apply`, and available as a dashboard button) is read-only and reports anything that would override or bypass the gateway:
+
+- `ANTHROPIC_*` set in the process environment or in Windows user/system environment variables, including base URLs that point straight at a configured relay node;
+- managed and project `.claude/settings*.json` files;
+- `apiKeyHelper`, and Bedrock/Vertex/Foundry switches;
+- auth conflicts from having both an API key and a token;
+- `HTTP(S)_PROXY` set without `NO_PROXY` covering localhost;
+- CC Switch (`~/.cc-switch`, proxy `:15721`) and claude-code-router, which also rewrite `settings.json`;
+- a different program occupying the gateway port.
+
+## Multi-Format Inbound (Codex, Gemini CLI, OpenAI SDKs)
+
+Besides Anthropic `/v1/messages`, the gateway accepts:
+
+| Endpoint | Clients |
+|---|---|
+| `POST /v1/chat/completions` | OpenAI SDKs and any OpenAI-compatible client |
+| `POST /v1/responses` | Codex CLI (function and custom/freeform tools such as `apply_patch`; reasoning replayed via `encrypted_content`) |
+| `POST /v1beta/models/{model}:generateContent`, `:streamGenerateContent?alt=sse`, `:countTokens`, `GET /v1beta/models` | Gemini CLI / google-genai (`x-goog-api-key` or `?key=` accepted) |
+
+Each request is converted to Anthropic Messages and runs through the same routing, failover, relay proxies and upstream translation. Any inbound format can therefore reach any upstream (Anthropic, OpenAI-compatible or Gemini). The response is converted back, streaming included.
+
+Not yet supported: hosted Responses tools (`web_search`, `file_search`, `local_shell`, MCP, tool namespaces) and `previous_response_id`. Codex works with its default `store=false` full-history mode.
+
+Parts of the quota checks and the Responses mapping are ported from [cc-switch](https://github.com/farion1231/cc-switch) (MIT, Copyright (c) 2025 Jason Young).
+
 ## Project Modules
 
 - `lib/router.js`: Core HTTP gateway (`ClaudeGoogleRouterServer`), multi-account pool/failover, and `/v1/messages` dispatch.
@@ -115,4 +179,8 @@ cgr status
 - `lib/config.js` / `lib/model-catalog.js` / `lib/claude-import.js` / `lib/auth.js`: Config normalization, model catalog/visibility, Claude profile import, and Google auth.
 - `lib/claude-settings.js`: Surgical `~/.claude/settings.json` sync and exit-restore policies.
 - `lib/cli.js` / `lib/cli-commands.js` / `lib/daemon.js` / `lib/manager-tui.js`: CLI entry, subcommands, background daemon lifecycle, and interactive terminal manager.
+- `lib/proxy-tunnel.js` / `lib/relay.js` / `lib/relay-cli.js` / `lib/config-watch.js`: fail-closed HTTP CONNECT / SOCKS5 tunnels, relay failover and probes, relay CLI, config hot reload.
+- `lib/quota/*` / `lib/quota-cli.js`: quota sources (CPAMC, API-key balances, coding plans, usage scripts, local subscriptions, gateway stats).
+- `lib/claude-doctor.js`: read-only Claude configuration conflict check.
+- `lib/inbound/*`: OpenAI Chat, OpenAI Responses and Gemini inbound translators.
 

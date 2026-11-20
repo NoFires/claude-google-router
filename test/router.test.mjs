@@ -353,19 +353,19 @@ test('multi-provider resolveModelRoute handles prefixes, wildcards, slots, and d
 
   const dsRule = resolveModelRoute('deepseek-flash[1m]', cfg)
   assert.equal(dsRule.providerId, 'deepseek')
-  assert.equal(dsRule.upstreamModel, 'deepseek-flash[1m]')
+  assert.equal(dsRule.upstreamModel, 'deepseek-flash')
 
   const sonnetSlot = resolveModelRoute('claude-sonnet-4-5-20250929', cfg)
   assert.equal(sonnetSlot.providerId, 'bigmodel')
-  assert.equal(sonnetSlot.upstreamModel, 'glm-5.3-flash[1M]')
+  assert.equal(sonnetSlot.upstreamModel, 'glm-5.3-flash')
 
   const haikuSlot = resolveModelRoute('claude-haiku-4-5', cfg)
   assert.equal(haikuSlot.providerId, 'deepseek')
-  assert.equal(haikuSlot.upstreamModel, 'deepseek-flash[1m]')
+  assert.equal(haikuSlot.upstreamModel, 'deepseek-flash')
 
   const fableSlot = resolveModelRoute('fable', cfg)
   assert.equal(fableSlot.providerId, 'bigmodel')
-  assert.equal(fableSlot.upstreamModel, 'glm-5.3[1M]')
+  assert.equal(fableSlot.upstreamModel, 'glm-5.3')
 
   const opusSlot = resolveModelRoute('claude-opus-4-6', cfg)
   assert.equal(opusSlot.providerId, 'google')
@@ -685,7 +685,7 @@ test('surgical settings.json management preserves hooks/plugins/custom env, inje
     assert.equal(afterApply.modelPicker.replaceBuiltInOptions, true)
     assert.ok(afterApply.modelPicker.options.some(o => o.model === 'gemini-4-carbon[1m]' && o.label === 'Gemini 4 Carbon (1M)' && o.behavesAs === 'claude-opus-4-6'))
     assert.ok(afterApply.modelPicker.options.some(o => o.model === 'gemini-4-hydrogen[1m]' && o.label === 'Gemini 4 Hydrogen (1M)' && o.behavesAs === 'claude-sonnet-4-6'))
-    assert.ok(afterApply.modelPicker.options.some(o => o.model === 'glm-5.3[1M]' && o.label === 'GLM-5.3 (1M)'))
+    assert.ok(afterApply.modelPicker.options.some(o => o.model === 'glm-5.3[1m]' && o.label === 'GLM-5.3 (1M)'))
     assert.ok(afterApply.modelPicker.options.some(o => o.model === 'deepseek-flash[1m]' && o.label === 'DeepSeek Flash (1M)'))
 
     // Add a runtime hook while gateway is active; backup restore must keep it
@@ -775,9 +775,9 @@ test('model modalities & polymorphism distinguish text+image vs text-only, think
   })
 
   const callable = listCallableModels(cfg)
-  const gem = callable.find(m => m.id === 'google/gemini-4-hydrogen[1m]')
-  const glmFlash = callable.find(m => m.id === 'bigmodel/glm-5.3-flash[1M]')
-  const dsFlash = callable.find(m => m.id === 'deepseek/deepseek-flash[1m]')
+  const gem = callable.find(m => m.id === 'google/gemini-4-hydrogen')
+  const glmFlash = callable.find(m => m.id === 'bigmodel/glm-5.3-flash')
+  const dsFlash = callable.find(m => m.id === 'deepseek/deepseek-flash')
   const dsV4Pro = callable.find(m => m.id === 'deepseek/deepseek-v4-pro')
   assert.deepEqual(gem.modalities, ['text', 'image'])
   assert.equal(gem.thinking, true)
@@ -944,10 +944,10 @@ test('HTTP router exposes /v1/models, /api/models, /api/presets/activate, and /a
   try {
     const v1Models = await (await fetch(`${st.baseUrl}/v1/models`)).json()
     assert.equal(v1Models.has_more, false)
-    assert.ok(v1Models.data.some(m => m.id === 'gemini-4-hydrogen[1m]' && m.canonical_id === 'google/gemini-4-hydrogen[1m]' && m.supports_image === true))
+    assert.ok(v1Models.data.some(m => m.id === 'gemini-4-hydrogen[1m]' && m.canonical_id === 'google/gemini-4-hydrogen' && m.supports_image === true))
 
     const apiModels = await (await fetch(`${st.baseUrl}/api/models`)).json()
-    assert.ok(apiModels.models.some(m => m.id === 'bigmodel/glm-5.3[1M]'))
+    assert.ok(apiModels.models.some(m => m.id === 'bigmodel/glm-5.3'))
 
     const activated = await (await fetch(`${st.baseUrl}/api/presets/activate`, {
       method: 'POST',
@@ -980,17 +980,17 @@ test('HTTP router exposes /v1/models, /api/models, /api/presets/activate, and /a
     assert.equal(vis.exposedCount, 2)
 
     const v1Filtered = await (await fetch(`${st.baseUrl}/v1/models`)).json()
-    assert.deepEqual(v1Filtered.data.map(m => m.id), ['glm-5.3[1M]', 'gemini-4-hydrogen[1m]'])
+    assert.deepEqual(v1Filtered.data.map(m => m.id), ['glm-5.3[1m]', 'gemini-4-hydrogen[1m]'])
 
     const pickerFiltered = buildModelPickerForClaude(activeConfig)
-    assert.deepEqual(pickerFiltered.options.map(o => o.model), ['glm-5.3[1M]', 'gemini-4-hydrogen[1m]'])
+    assert.deepEqual(pickerFiltered.options.map(o => o.model), ['glm-5.3[1m]', 'gemini-4-hydrogen[1m]'])
 
     // Regression: [1M] flash/fast models must never receive claude-haiku-4-5 behavesAs (Claude Code drops 1m+haiku in XBs/Dje)
     const flashCfg = setModelVisibility(activeConfig, {
       exposedModels: ['bigmodel/glm-5.3-flash[1M]', 'google/gemini-4-argon[1m]'],
     })
     const flashPicker = buildModelPickerForClaude(flashCfg)
-    assert.equal(flashPicker.options.find(o => o.model === 'glm-5.3-flash[1M]')?.behavesAs, 'claude-sonnet-4-6')
+    assert.equal(flashPicker.options.find(o => o.model === 'glm-5.3-flash[1m]')?.behavesAs, 'claude-sonnet-4-6')
     assert.equal(flashPicker.options.find(o => o.model === 'gemini-4-argon[1m]')?.behavesAs, 'claude-sonnet-4-6')
 
     const resetCfg = setModelVisibility(activeConfig, { exposedModels: null })
@@ -1142,8 +1142,8 @@ test('multi-account pool: modelAccounts binding, 429 failover + cooldown, round-
 
     // 5. Same model across different accounts can be exposed simultaneously with clean labels (no @ in displayName)
     const callableDual = listCallableModels(activeConfig)
-    const p1 = callableDual.find(m => m.id === 'google@acct-1/gemini-4-hydrogen[1m]')
-    const p2 = callableDual.find(m => m.id === 'google@acct-2/gemini-4-hydrogen[1m]')
+    const p1 = callableDual.find(m => m.id === 'google@acct-1/gemini-4-hydrogen')
+    const p2 = callableDual.find(m => m.id === 'google@acct-2/gemini-4-hydrogen')
     assert.ok(p1 && p1.pinnedAccount && p1.displayName.includes('主力备注') && !p1.displayName.includes('@'))
     assert.ok(p2 && p2.pinnedAccount && p2.displayName.includes('副号') && !p2.displayName.includes('@'))
     const dualCfg = setModelVisibility(activeConfig, {
@@ -1426,4 +1426,100 @@ test('missing stream flag means non-streaming; "express" project uses project-le
       'https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-4-hydrogen:generateContent',
     )
   }
+})
+
+test('Google test: network failure during service-account token exchange shows the real cause and a proxy hint', async () => {
+  const { generateKeyPairSync } = await import('node:crypto')
+  const dir = mkdtempSync(join(tmpdir(), 'cgr-sa-'))
+  try {
+    const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
+    const saFile = join(dir, 'sa.json')
+    writeFileSync(saFile, JSON.stringify({
+      type: 'service_account',
+      project_id: 'demo-project',
+      client_email: 'demo@demo-project.iam.gserviceaccount.com',
+      private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }),
+    }))
+    const cfg = normalizeConfig({
+      providers: { google: { type: 'google-vertex', authMode: 'service-account', serviceAccountFile: saFile, location: 'global', models: ['gemini-4-hydrogen'] } },
+    })
+    const timeout = Object.assign(new Error('Connect Timeout Error (attempted address: oauth2.googleapis.com:443, timeout: 10000ms)'), { code: 'UND_ERR_CONNECT_TIMEOUT' })
+    const router = new ClaudeGoogleRouterServer({
+      getConfig: () => cfg,
+      fetch: async () => { throw new TypeError('fetch failed', { cause: timeout }) },
+    })
+    await assert.rejects(router.testConnection('google'), err => {
+      assert.match(err.message, /fetch failed: Connect Timeout Error .*oauth2\.googleapis\.com/)
+      assert.match(err.message, /强制上游代理/)
+      return true
+    })
+
+    // Model ids with a Claude context suffix are sent to Vertex without it
+    const seenUrls = []
+    const okCfg = normalizeConfig({ providers: { google: { ...cfg.providers.google, models: ['gemini-4-hydrogen[1m]'] } } })
+    const router3 = new ClaudeGoogleRouterServer({
+      getConfig: () => okCfg,
+      fetch: async (url) => {
+        seenUrls.push(String(url))
+        if (String(url).includes('oauth2')) return new Response(JSON.stringify({ access_token: 't', expires_in: 3600 }), { status: 200 })
+        return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'OK' }] } }] }), { status: 200 })
+      },
+    })
+    const ok = await router3.testConnection('google')
+    assert.equal(ok.model, 'gemini-4-hydrogen')
+    assert.ok(seenUrls.some(u => u.includes('/models/gemini-4-hydrogen:generateContent')), seenUrls.join(' '))
+
+    // With a proxy configured the hint is not repeated (the proxy error speaks for itself)
+    const proxied = normalizeConfig({ providers: { google: { ...cfg.providers.google, proxies: ['socks5://127.0.0.1:9'] } } })
+    const router2 = new ClaudeGoogleRouterServer({ getConfig: () => proxied })
+    await assert.rejects(router2.testConnection('google'), err => {
+      assert.doesNotMatch(err.message, /强制上游代理/)
+      return true
+    })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('[1m] context suffixes are tidied out of config; the Claude-facing [1m] is derived from contextWindow', () => {
+  const cfg = normalizeConfig({
+    providers: {
+      bigmodel: { type: 'anthropic', baseUrl: 'https://open.bigmodel.cn/api/anthropic', models: ['glm-5.3[1M]', 'glm-4-air', { id: 'glm-5.3-flash[1M]', visible: false }] },
+      deepseek: { type: 'anthropic', baseUrl: 'https://api.deepseek.com/anthropic', models: ['deepseek-flash', 'deepseek-flash[1m]'] },
+    },
+    routes: {
+      defaultTarget: 'bigmodel/glm-5.3[1M]',
+      haikuTarget: 'deepseek/deepseek-flash[1m]',
+      modelLabels: { 'bigmodel/glm-5.3[1M]': '主力' },
+      rules: [{ pattern: 'glm-*', target: 'bigmodel/glm-5.3[1M]' }],
+    },
+    presets: { mine: { label: 'x', defaultTarget: 'bigmodel/glm-5.3[1M]' } },
+    claudeSync: { exposedModels: ['bigmodel/glm-5.3[1M]', 'deepseek/deepseek-flash'] },
+  })
+  assert.deepEqual(cfg.providers.bigmodel.models, [
+    { id: 'glm-5.3', contextWindow: 1000000 },
+    'glm-4-air',
+    { id: 'glm-5.3-flash', visible: false, contextWindow: 1000000 },
+  ])
+  assert.deepEqual(cfg.providers.deepseek.models, [{ id: 'deepseek-flash', contextWindow: 1000000 }])
+  assert.equal(cfg.routes.defaultTarget, 'bigmodel/glm-5.3')
+  assert.equal(cfg.routes.haikuTarget, 'deepseek/deepseek-flash')
+  assert.deepEqual(cfg.routes.modelLabels, { 'bigmodel/glm-5.3': '主力' })
+  assert.equal(cfg.routes.rules[0].target, 'bigmodel/glm-5.3')
+  assert.equal(cfg.presets.mine.defaultTarget, 'bigmodel/glm-5.3')
+  assert.equal(cfg.presets.google.defaultTarget, 'google/gemini-4-hydrogen')
+  assert.deepEqual(cfg.claudeSync.exposedModels, ['bigmodel/glm-5.3', 'deepseek/deepseek-flash'])
+  assert.deepEqual(normalizeConfig(cfg), cfg, 'idempotent')
+
+  const byId = Object.fromEntries(listCallableModels(cfg).map(m => [m.id, m]))
+  assert.equal(byId['bigmodel/glm-5.3'].claudeId, 'glm-5.3[1m]')
+  assert.equal(byId['bigmodel/glm-5.3'].remark, '主力')
+  assert.equal(byId['bigmodel/glm-4-air'].claudeId, 'glm-4-air', '200K model gets no suffix')
+  assert.equal(byId['google/gemini-4-hydrogen'].claudeId, 'gemini-4-hydrogen[1m]', 'Gemini 1M window is inferred')
+  assert.equal(withClaudeContextSuffix('bigmodel/glm-5.3', cfg), 'bigmodel/glm-5.3[1m]')
+  assert.equal(withClaudeContextSuffix('bigmodel/glm-4-air', cfg), 'bigmodel/glm-4-air')
+  assert.equal(withClaudeContextSuffix('gemini-4-argon'), 'gemini-4-argon[1m]')
+  // Requests from Claude Code still carry [1m] and must keep routing
+  assert.equal(resolveModelRoute('glm-5.3[1m]', cfg).providerId, 'bigmodel')
+  assert.equal(resolveModelRoute('glm-5.3[1M]', cfg).upstreamModel, 'glm-5.3')
 })

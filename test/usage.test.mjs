@@ -131,7 +131,7 @@ test('cgr usage CLI: --model is a filter (does not rewrite routes); price set pe
   const t = tmp()
   try {
     const configPath = join(t.dir, 'config.json')
-    writeFileSync(configPath, JSON.stringify({ routes: { defaultTarget: 'google/gemini-4-hydrogen[1m]' }, usage: { dir: join(t.dir, 'usage') } }))
+    writeFileSync(configPath, JSON.stringify({ routes: { defaultTarget: 'google/gemini-4-hydrogen' }, usage: { dir: join(t.dir, 'usage') } }))
     const store = new UsageStore({ dir: join(t.dir, 'usage') })
     await store.writeRaw(SAMPLE)
     const env = { ...process.env, HOME: t.dir, USERPROFILE: t.dir }
@@ -140,7 +140,7 @@ test('cgr usage CLI: --model is a filter (does not rewrite routes); price set pe
     assert.doesNotMatch(stdout, /deepseek/)
     await execFileP(process.execPath, [CLI, 'usage', 'price', 'set', 'claude-*', '--input', '3', '--output', '15', '--config', configPath], { env })
     const saved = JSON.parse(readFileSync(configPath, 'utf8'))
-    assert.equal(saved.routes.defaultTarget, 'google/gemini-4-hydrogen[1m]', 'routes untouched')
+    assert.equal(saved.routes.defaultTarget, 'google/gemini-4-hydrogen', 'routes untouched')
     assert.equal(saved.usage.pricing[0].match, 'claude-*')
     const { stdout: sum } = await execFileP(process.execPath, [CLI, 'usage', '--config', configPath], { env })
     assert.match(sum, /近 7 天/)

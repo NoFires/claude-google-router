@@ -37,7 +37,7 @@ import {
 } from '../lib/config.js'
 import { resolveModelRoute } from '../lib/routing-table.js'
 import { OpenAiToAnthropicStreamTranslator, buildOpenAiRequestFromAnthropic } from '../lib/openai-upstream.js'
-import { adaptBodyForCapabilities, forwardAnthropicMessages, sanitizeAnthropicSystem } from '../lib/anthropic-upstream.js'
+import { adaptBodyForCapabilities, forwardAnthropicMessages, sanitizeAnthropicRequest, sanitizeAnthropicSystem } from '../lib/anthropic-upstream.js'
 
 test('resolveGoogleTarget selects express-api-key, gemini-api, and env vars', () => {
   const express = resolveGoogleTarget({
@@ -842,6 +842,34 @@ test('model modalities & polymorphism distinguish text+image vs text-only, think
   })
   assert.deepEqual(upstreamBody.system, [{ type: 'text', text: 'sys', cache_control: cacheCtrl }])
   assert.equal(upstreamBody.model, 'claude-opus-5-5')
+
+  // Strict relays also reject whitespace-only text inside messages:
+  // - whole message only whitespace text -> replaced by an invisible non-whitespace filler
+  const wsMessage = sanitizeAnthropicRequest({
+    system: 'sys',
+    messages: [
+      { role: 'user', content: 'hi' },
+      { role: 'user', content: [{ type: 'text', text: '   ', cache_control: cacheCtrl }] },
+    ],
+  })
+  assert.equal(wsMessage.messages[1].content.length, 1)
+  assert.equal(wsMessage.messages[1].content[0].text, '​')
+  assert.ok(wsMessage.messages[1].content[0].text.trim(), 'filler must survive trim')
+  assert.deepEqual(wsMessage.messages[1].content[0].cache_control, cacheCtrl)
+  // - empty cache-marker block beside real text -> dropped, cache_control moves to the real block
+  const marker = sanitizeAnthropicRequest({
+    messages: [
+      { role: 'user', content: [{ type: 'text', text: 'real' }, { type: 'text', text: '', cache_control: cacheCtrl }] },
+    ],
+  })
+  assert.deepEqual(marker.messages[0].content, [{ type: 'text', text: 'real', cache_control: cacheCtrl }])
+  // - plain whitespace text without cache_control beside other content is legal: untouched
+  const plain = { role: 'assistant', content: [{ type: 'text', text: '  ' }, { type: 'text', text: 'real' }] }
+  const untouched = sanitizeAnthropicRequest({ messages: [{ ...plain, content: [...plain.content] }] })
+  assert.deepEqual(untouched.messages[0].content, plain.content)
+  // - tool_result-only user messages are valid and untouched
+  const toolMsg = { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: '' }] }
+  assert.equal(sanitizeAnthropicRequest({ messages: [toolMsg] }).messages[0], toolMsg)
 
   // OpenAI upstream strips [1m] suffix and converts image when model supports image
   const oaiMeta = inferModelCapabilities('oai', 'gpt-4o[1m]')

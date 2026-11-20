@@ -37,7 +37,7 @@ import {
 } from '../lib/config.js'
 import { resolveModelRoute } from '../lib/routing-table.js'
 import { OpenAiToAnthropicStreamTranslator, buildOpenAiRequestFromAnthropic } from '../lib/openai-upstream.js'
-import { adaptBodyForCapabilities } from '../lib/anthropic-upstream.js'
+import { adaptBodyForCapabilities, forwardAnthropicMessages, sanitizeAnthropicSystem } from '../lib/anthropic-upstream.js'
 
 test('resolveGoogleTarget selects express-api-key, gemini-api, and env vars', () => {
   const express = resolveGoogleTarget({
@@ -805,6 +805,43 @@ test('model modalities & polymorphism distinguish text+image vs text-only, think
   assert.equal(adapted.thinking, undefined)
   assert.equal(adapted.messages[0].content[1].type, 'text')
   assert.ok(adapted.messages[0].content[1].text.includes('text only'))
+
+  // Whitespace-only system blocks (Claude Code cache-breakpoint markers) break strict relays
+  const cacheCtrl = { type: 'ephemeral' }
+  assert.equal(sanitizeAnthropicSystem({ system: [{ type: 'text', text: 'ok' }] }).system.length, 1)
+  const allBlank = sanitizeAnthropicSystem({ system: [{ type: 'text', text: '   ', cache_control: cacheCtrl }], messages: [] })
+  assert.equal(allBlank.system, undefined)
+  assert.equal(sanitizeAnthropicSystem({ system: '   ' }).system, undefined)
+  assert.equal(sanitizeAnthropicSystem({}).system, undefined)
+  const markerDropped = sanitizeAnthropicSystem({
+    system: [
+      { type: 'text', text: 'You are Claude Code.' },
+      { type: 'text', text: '', cache_control: cacheCtrl },
+    ],
+    messages: [{ role: 'user', content: 'hi' }],
+  })
+  assert.equal(markerDropped.system.length, 1)
+  assert.deepEqual(markerDropped.system[0].cache_control, cacheCtrl)
+  const inputBlock = { type: 'text', text: 'unchanged', cache_control: cacheCtrl }
+  assert.equal(sanitizeAnthropicSystem({ system: [inputBlock] }).system[0], inputBlock)
+
+  // forwardAnthropicMessages sends the sanitized body upstream
+  let upstreamBody = null
+  await forwardAnthropicMessages({
+    provider: { baseUrl: 'https://relay.example', apiKey: 'k' },
+    upstreamModel: 'claude-opus-5-5',
+    anthropicBody: {
+      model: 'claude-opus-5-5[1m]',
+      system: [{ type: 'text', text: 'sys' }, { type: 'text', text: ' ', cache_control: cacheCtrl }],
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+    },
+    fetchFn: async (url, init) => {
+      upstreamBody = JSON.parse(init.body)
+      return new Response(JSON.stringify({ content: [] }), { status: 200 })
+    },
+  })
+  assert.deepEqual(upstreamBody.system, [{ type: 'text', text: 'sys', cache_control: cacheCtrl }])
+  assert.equal(upstreamBody.model, 'claude-opus-5-5')
 
   // OpenAI upstream strips [1m] suffix and converts image when model supports image
   const oaiMeta = inferModelCapabilities('oai', 'gpt-4o[1m]')

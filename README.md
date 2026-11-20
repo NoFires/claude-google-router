@@ -30,7 +30,7 @@ Route Claude Code to **Google Vertex AI / Gemini** (`gemini-4-hydrogen`, `gemini
 
 ## Web Console (primary UI)
 
-Double-click **`cgr.cmd`** (or run `cgr` with no arguments). It starts the gateway in the background if needed and opens the web console at `http://127.0.0.1:18765/`. Everything can be done in the web console:
+Double-click **`cgr.cmd`** (or run `cgr` with no arguments). If the gateway is not running yet, it starts attached to that terminal — closing the window or pressing Ctrl+C stops the gateway — and opens the web console at `http://127.0.0.1:18765/`. If a gateway is already running, it just opens the console. Everything can be done in the web console:
 
 - **⚡ Quick setup:**
   - enter the relay address (bare IPv6 is fine);

@@ -96,3 +96,19 @@ test('a concurrent write (e.g. plugin install) during cgr write is not overwritt
     s.cleanup()
   }
 })
+
+test('rapid repeated takeovers are serialized: all succeed, no temp files left, plugins intact', async () => {
+  const { readdirSync } = await import('node:fs')
+  const { dirname } = await import('node:path')
+  const s = sandbox()
+  try {
+    const results = await Promise.allSettled(Array.from({ length: 8 }, () => applyClaudeSettings({ baseUrl: 'http://127.0.0.1:18765', config: cfg }, s.path)))
+    assert.deepEqual(results.map(r => r.status), Array(8).fill('fulfilled'))
+    assert.deepEqual(readdirSync(dirname(s.path)).filter(f => f.endsWith('.tmp')), [])
+    const out = JSON.parse(readFileSync(s.path, 'utf8'))
+    assert.deepEqual(out.enabledPlugins, USER_SETTINGS.enabledPlugins)
+    assert.equal(out.model, 'claude-opus-5-5[1m]')
+  } finally {
+    s.cleanup()
+  }
+})

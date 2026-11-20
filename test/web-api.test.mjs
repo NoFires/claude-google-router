@@ -126,3 +126,34 @@ test('web: local subscriptions toggle, logs, launch-claude validation, usage-scr
     assert.equal(getCfg().providers.nap.usageScript.userId, '8')
   })
 })
+
+test('web: model context windows come from the relay /v1/models and give [1m] Claude ids', async () => {
+  const { parseModelList, mergeModelDetails } = await import('../lib/web-api.js')
+  assert.deepEqual(parseModelList({ data: [{ id: 'a', max_input_tokens: 1000000, max_tokens: 128000, display_name: 'A' }, { id: 'b' }] }), [
+    { id: 'a', contextWindow: 1000000, maxOutputTokens: 128000, label: 'A' },
+    { id: 'b', contextWindow: undefined, maxOutputTokens: undefined, label: undefined },
+  ])
+  assert.deepEqual(parseModelList({ models: [{ name: 'models/gemini-x', inputTokenLimit: 1048576, outputTokenLimit: 65536 }] })[0].contextWindow, 1048576)
+  const merged = mergeModelDetails(['a', 'b', { id: 'c', contextWindow: 5, contextWindowManual: true }], [{ id: 'a', contextWindow: 1000000 }, { id: 'c', contextWindow: 9 }])
+  assert.deepEqual(merged.models, [{ id: 'a', contextWindow: 1000000 }, 'b', { id: 'c', contextWindow: 5, contextWindowManual: true }])
+  assert.equal(merged.changed, 1)
+
+  const origin = await startOrigin(originHost)
+  const socks = await startSocks5()
+  try {
+    await withServer(async ({ call, getCfg }) => {
+      await call('POST', '/api/providers/upsert', { id: 'relay', provider: { type: 'anthropic', enabled: true, baseUrl: `http://${formatAuthority(originHost, origin.port)}`, apiKey: 'k', proxies: [socks.url], models: ['claude-x', 'gemini-y'] } })
+      const r = await call('POST', '/api/relay/sync-models', { providerId: 'relay' })
+      assert.deepEqual(r.json.results, [{ providerId: 'relay', ok: true, changed: 1 }])
+      assert.deepEqual(getCfg().providers.relay.models, [{ id: 'claude-x', contextWindow: 1000000, maxOutputTokens: 128000 }, 'gemini-y'])
+      const v1 = await call('GET', '/v1/models')
+      const m = v1.json.data.find(x => x.canonical_id === 'relay/claude-x')
+      assert.equal(m.id, 'claude-x[1m]')
+      assert.equal(m.max_input_tokens, 1000000)
+      assert.equal(m.max_tokens, 128000)
+    })
+  } finally {
+    await socks.close()
+    await origin.close()
+  }
+})

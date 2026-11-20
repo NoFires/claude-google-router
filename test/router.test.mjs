@@ -470,7 +470,7 @@ test('HTTP router dispatches Google, Anthropic-compatible (stripping foreign gsi
     const htmlRes = await fetch(`${status.baseUrl}/`)
     assert.equal(htmlRes.status, 200)
     const htmlBody = await htmlRes.text()
-    assert.ok(htmlBody.includes('Claude Google Router') && htmlBody.includes('供应商与多账号额度池'))
+    assert.ok(htmlBody.includes('CGR 控制台') && htmlBody.includes('id="page-providers"') && htmlBody.includes('id="page-quota"'))
 
     const unauth = await fetch(`${status.baseUrl}/v1/messages`, {
       method: 'POST',

@@ -114,3 +114,19 @@ test('CPAMC: --status-only makes no upstream api-calls; dead proxy is fail-close
     await cpamc.close()
   }
 })
+
+test('CPAMC: quota derived from server-observed signals (no upstream call)', async () => {
+  const { quotaFromSignals } = await import('../lib/quota/cpamc.js')
+  const q = quotaFromSignals('claude', {
+    observed_at: '2026-11-20T11:58:56Z',
+    signals: {
+      'Anthropic-Ratelimit-Unified-5h-Utilization': '0.02', 'Anthropic-Ratelimit-Unified-5h-Reset': '1795194000',
+      'Anthropic-Ratelimit-Unified-7d-Utilization': '0.39', 'Anthropic-Ratelimit-Unified-7d-Reset': '1795500000',
+    },
+  })
+  assert.deepEqual(q.tiers.map(t => [t.name, Math.round(t.utilization)]), [['five_hour', 2], ['seven_day', 39]])
+  assert.equal(q.tiers[0].resetsAt, new Date(1795194000 * 1000).toISOString())
+  const c = quotaFromSignals('codex', { signals: { 'x-codex-primary-used-percent': '12', 'x-codex-primary-window-minutes': '300' } })
+  assert.equal(c.tiers[0].name, 'five_hour')
+  assert.equal(quotaFromSignals('claude', { signals: {} }), null)
+})

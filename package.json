@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node ./lib/cli.js start",
-    "test": "node --test test/router.test.mjs test/proxy.test.mjs test/relay.test.mjs test/hot-reload.test.mjs test/quota.test.mjs test/quota-sources.test.mjs test/doctor.test.mjs test/inbound.test.mjs test/usage.test.mjs test/doctor-actions.test.mjs test/web-api.test.mjs"
+    "test": "node --test test/router.test.mjs test/proxy.test.mjs test/relay.test.mjs test/hot-reload.test.mjs test/quota.test.mjs test/quota-sources.test.mjs test/doctor.test.mjs test/inbound.test.mjs test/usage.test.mjs test/doctor-actions.test.mjs test/web-api.test.mjs test/settings-scope.test.mjs"
   },
   "engines": {
     "node": ">=20.0.0"

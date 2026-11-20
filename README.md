@@ -19,7 +19,7 @@ Route Claude Code to **Google Vertex AI / Gemini** (`gemini-4-hydrogen`, `gemini
   - `cgr run [--model <provider/model>] [-- <claude-args>...]`: launch Claude Code in an isolated temporary `--settings` file.
 - **Surgical `~/.claude/settings.json` Management**:
   - Only manages provider-related `env` keys (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_*_MODEL`, `ANTHROPIC_CUSTOM_HEADERS`, `CLAUDE_CODE_SUBAGENT_MODEL`), `model`, and `modelPicker`.
-  - Never overwrites `hooks`, `enabledPlugins`, `permissions`, or unrelated custom `env` variables (provider-related keys such as `API_TIMEOUT_MS` / `ANTHROPIC_SMALL_FAST_MODEL` are managed and restored on exit).
+  - Writes **only** the top-level `model` / `modelPicker` and the provider/model `env` keys (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_*MODEL*`, `CLAUDE_CODE_SUBAGENT_MODEL`, ...). `enabledPlugins`, `extraKnownMarketplaces`, `hooks`, `permissions`, `statusLine`, `modelSettings` and every other `env` variable (e.g. `API_TIMEOUT_MS`) are never written. The file is re-read right before each write, so a plugin installed at the same moment is not overwritten.
   - Injects `modelPicker.options` (`behavesAs`, `replaceBuiltInOptions: true` by default) and serves `GET /v1/models` with your selected models.
 - **Model Modality & Polymorphism Distinction**:
   - Models can be strings (`"gemini-4-hydrogen[1m]"`) or polymorphic objects (`{ id, visible, modalities, thinking, tools, contextWindow, behavesAs }`).

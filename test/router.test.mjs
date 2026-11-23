@@ -1523,3 +1523,9 @@ test('[1m] context suffixes are tidied out of config; the Claude-facing [1m] is 
   assert.equal(resolveModelRoute('glm-5.3[1m]', cfg).providerId, 'bigmodel')
   assert.equal(resolveModelRoute('glm-5.3[1M]', cfg).upstreamModel, 'glm-5.3')
 })
+
+test('glm-5 family multimodality and 1M context are inferred from the name', () => {
+  assert.deepEqual(inferModelCapabilities('bigmodel', 'glm-5.4').modalities, ['text', 'image'])
+  assert.equal(inferModelCapabilities('bigmodel', 'glm-5.4').contextWindow, 1000000)
+  assert.equal(inferModelCapabilities('bigmodel', 'glm-4.6').supportsImage, false, 'glm-4.x base stays text-only')
+})

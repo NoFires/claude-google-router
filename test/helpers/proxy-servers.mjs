@@ -78,7 +78,7 @@ export async function startOrigin(host = '::1', { gapMs = 150 } = {}) {
       }
       if (req.url.startsWith('/v1/models')) {
         res.writeHead(200, { 'content-type': 'application/json' })
-        res.end(JSON.stringify({ data: [{ id: 'claude-x', max_input_tokens: 1000000, max_tokens: 128000 }, { id: 'gemini-y' }] }))
+        res.end(JSON.stringify({ data: [{ id: 'claude-x', max_input_tokens: 1000000, max_tokens: 128000, modalities: ['TEXT', 'image'] }, { id: 'gemini-y' }] }))
         return
       }
       if (req.url.startsWith('/status/')) {

@@ -67,6 +67,8 @@ test('web: detects local SOCKS5 / HTTP proxies and checks they reach the relay; 
 
       const m = await call('POST', '/api/relay/models', { provider: { type: 'anthropic', baseUrl, apiKey: 'k', proxies: [socks.url] } })
       assert.deepEqual(m.json.models, ['claude-x', 'gemini-y'])
+      assert.deepEqual(m.json.details.find(x => x.id === 'claude-x').modalities, ['text', 'image'])
+      assert.equal(m.json.details.find(x => x.id === 'gemini-y').modalities, undefined)
       const bad = await call('POST', '/api/relay/models', { provider: { type: 'anthropic', baseUrl, proxies: ['ftp://x:1'] } })
       assert.equal(bad.json.ok, false)
       const noBase = await call('POST', '/api/relay/models', { provider: { type: 'anthropic' } })
@@ -132,13 +134,22 @@ test('web: local subscriptions toggle, logs, launch-claude validation, usage-scr
 test('web: model context windows come from the relay /v1/models and give [1m] Claude ids', async () => {
   const { parseModelList, mergeModelDetails } = await import('../lib/web-api.js')
   assert.deepEqual(parseModelList({ data: [{ id: 'a', max_input_tokens: 1000000, max_tokens: 128000, display_name: 'A' }, { id: 'b' }] }), [
-    { id: 'a', contextWindow: 1000000, maxOutputTokens: 128000, label: 'A' },
-    { id: 'b', contextWindow: undefined, maxOutputTokens: undefined, label: undefined },
+    { id: 'a', contextWindow: 1000000, maxOutputTokens: 128000, label: 'A', modalities: undefined },
+    { id: 'b', contextWindow: undefined, maxOutputTokens: undefined, label: undefined, modalities: undefined },
   ])
+  assert.deepEqual(parseModelList({ data: [{ id: 'or-x', architecture: { input_modalities: ['text', 'IMAGE'] } }] })[0].modalities, ['text', 'image'])
   assert.deepEqual(parseModelList({ models: [{ name: 'models/gemini-x', inputTokenLimit: 1048576, outputTokenLimit: 65536 }] })[0].contextWindow, 1048576)
-  const merged = mergeModelDetails(['a', 'b', { id: 'c', contextWindow: 5, contextWindowManual: true }], [{ id: 'a', contextWindow: 1000000 }, { id: 'c', contextWindow: 9 }])
-  assert.deepEqual(merged.models, [{ id: 'a', contextWindow: 1000000 }, 'b', { id: 'c', contextWindow: 5, contextWindowManual: true }])
-  assert.equal(merged.changed, 1)
+  const merged = mergeModelDetails(
+    ['a', 'b', { id: 'c', contextWindow: 5, contextWindowManual: true }, { id: 'd', modalities: ['text'] }],
+    [{ id: 'a', contextWindow: 1000000, modalities: ['text', 'image'] }, { id: 'c', contextWindow: 9 }, { id: 'd', modalities: ['text', 'image'] }],
+  )
+  assert.deepEqual(merged.models, [
+    { id: 'a', contextWindow: 1000000, modalities: ['text', 'image'] },
+    'b',
+    { id: 'c', contextWindow: 5, contextWindowManual: true },
+    { id: 'd', modalities: ['text'] },
+  ])
+  assert.equal(merged.changed, 2)
 
   const origin = await startOrigin(originHost)
   const socks = await startSocks5()
@@ -146,8 +157,8 @@ test('web: model context windows come from the relay /v1/models and give [1m] Cl
     await withServer(async ({ call, getCfg }) => {
       await call('POST', '/api/providers/upsert', { id: 'relay', provider: { type: 'anthropic', enabled: true, baseUrl: `http://${formatAuthority(originHost, origin.port)}`, apiKey: 'k', proxies: [socks.url], models: ['claude-x', 'gemini-y'] } })
       const r = await call('POST', '/api/relay/sync-models', { providerId: 'relay' })
-      assert.deepEqual(r.json.results, [{ providerId: 'relay', ok: true, changed: 1 }])
-      assert.deepEqual(getCfg().providers.relay.models, [{ id: 'claude-x', contextWindow: 1000000, maxOutputTokens: 128000 }, 'gemini-y'])
+      assert.deepEqual(r.json.results, [{ providerId: 'relay', ok: true, changed: 2 }])
+      assert.deepEqual(getCfg().providers.relay.models, [{ id: 'claude-x', contextWindow: 1000000, maxOutputTokens: 128000, modalities: ['text', 'image'] }, 'gemini-y'])
       const v1 = await call('GET', '/v1/models')
       const m = v1.json.data.find(x => x.canonical_id === 'relay/claude-x')
       assert.equal(m.id, 'claude-x[1m]')

@@ -69,6 +69,8 @@ test('web: detects local SOCKS5 / HTTP proxies and checks they reach the relay; 
       assert.deepEqual(m.json.models, ['claude-x', 'gemini-y'])
       const bad = await call('POST', '/api/relay/models', { provider: { type: 'anthropic', baseUrl, proxies: ['ftp://x:1'] } })
       assert.equal(bad.json.ok, false)
+      const noBase = await call('POST', '/api/relay/models', { provider: { type: 'anthropic' } })
+      assert.match(noBase.json.error, /Base URL/)
     })
   } finally {
     await socks.close()
